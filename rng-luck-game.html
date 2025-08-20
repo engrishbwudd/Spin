@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Italian Brainrot RNG Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        .game-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
+            width: 90%;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-size: 2.2em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            background: linear-gradient(45deg, #FFD700, #FF6B6B, #4ECDC4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: rainbow 3s ease infinite;
+        }
+
+        @keyframes rainbow {
+            0%, 100% { filter: hue-rotate(0deg); }
+            50% { filter: hue-rotate(180deg); }
+        }
+
+        .wheel-container {
+            position: relative;
+            height: 250px;
+            margin: 20px auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .wheel {
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            transition: transform 3s cubic-bezier(0.17, 0.67, 0.83, 0.67);
+        }
+
+        .wheel-segment {
+            position: absolute;
+            width: 50%;
+            height: 50%;
+            transform-origin: right bottom;
+            opacity: 0.9;
+        }
+
+        .wheel-pointer {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 40px solid #FFD700;
+            z-index: 10;
+            filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.3));
+        }
+
+        .result-display {
+            min-height: 180px;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            display: none;
+        }
+
+        .result-display.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .character-image {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 10px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.3));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            background-color: rgba(255, 255, 255, 0.05);
+            object-fit: contain;
+        }
+
+        .character-name {
+            font-size: 1.3em;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin: 10px 0;
+        }
+
+        .rarity-label {
+            font-size: 1.8em;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            margin-bottom: 10px;
+        }
+
+        .roll-button {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 18px 45px;
+            font-size: 1.2em;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: bold;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            margin: 10px;
+        }
+
+        .roll-button:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .roll-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toggle-container {
+            margin: 10px 0;
+        }
+
+        .toggle-label {
+            display: inline-flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle-switch {
+            width: 50px;
+            height: 25px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            position: relative;
+            margin-left: 10px;
+            transition: background 0.3s;
+        }
+
+        .toggle-switch.active {
+            background: #4CAF50;
+        }
+
+        .toggle-slider {
+            width: 21px;
+            height: 21px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.3s;
+        }
+
+        .toggle-switch.active .toggle-slider {
+            transform: translateX(25px);
+        }
+
+        .stats {
+            margin: 20px 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .stat-box {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px;
+            border-radius: 10px;
+        }
+
+        .collection-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+        }
+
+        .collection-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+
+        .collection-count {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        /* Rarity Colors */
+        .common { background: linear-gradient(135deg, #95a5a6, #7f8c8d); }
+        .uncommon { background: linear-gradient(135deg, #27ae60, #229954); }
+        .rare { background: linear-gradient(135deg, #3498db, #2980b9); }
+        .epic { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
+        .legendary { 
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            animation: legendaryPulse 1s infinite;
+        }
+        .mythic { 
+            background: linear-gradient(135deg, #e74c3c, #c0392b, #e74c3c);
+            background-size: 200% 200%;
+            animation: mythicShine 2s linear infinite;
+        }
+
+        @keyframes legendaryPulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(243, 156, 18, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(243, 156, 18, 0.8); }
+        }
+
+        @keyframes mythicShine {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .upgrade-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 15px;
+        }
+
+        .upgrade-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .upgrade-button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.85em;
+        }
+
+        .upgrade-button:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.05);
+        }
+
+        .upgrade-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Popup */
+        .popup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .popup-overlay.active {
+            display: flex;
+            animation: popupFadeIn 0.3s ease;
+        }
+
+        @keyframes popupFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .popup-content {
+            background: linear-gradient(135deg, #1a1a2e, #16213e);
+            border-radius: 20px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            animation: popupBounce 0.5s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        @keyframes popupBounce {
+            0% { transform: scale(0.5); opacity: 0; }
+            60% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .popup-content .character-image {
+            width: 150px;
+            height: 150px;
+            margin: 15px auto;
+            background-size: contain;
+            background-position: center;
+            background-repeat: no-repeat;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            object-fit: contain;
+        }
+        .popup-close {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            border-radius: 30px;
+            cursor: pointer;
+            margin-top: 20px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>🇮🇹 ITALIAN BRAINROT RNG 🎰</h1>
+        
+        <div class="toggle-container">
+            <label class="toggle-label">
+                Wheel Spin Animation:
+                <div class="toggle-switch active" id="wheelToggle">
+                    <div class="toggle-slider"></div>
+                </div>
+            </label>
+        </div>
+
+        <div class="wheel-container" id="wheelContainer" style="display: block;">
+            <div class="wheel-pointer"></div>
+            <div class="wheel" id="wheel">
+                <!-- Wheel segments will be generated by JS -->
+            </div>
+        </div>
+        
+        <div class="result-display" id="resultDisplay">
+            <div class="rarity-label" id="rarityLabel">COMMON</div>
+            <div class="character-image" id="characterImage"></div>
+            <div class="character-name" id="characterName">Pescaratore Zanzaro</div>
+        </div>
+        
+        <button class="roll-button" onclick="roll()" id="rollButton">🎲 MOLTO BENE ROLL 🎲</button>
+        
+        <div class="stats">
+            <div class="stat-box">
+                <div>Total Rolls</div>
+                <div style="font-size: 1.5em; font-weight: bold;" id="totalRolls">0</div>
+            </div>
+            <div class="stat-box">
+                <div>Luck Potions</div>
+                <div style="font-size: 1.5em; font-weight: bold; color: #FFD700;" id="luckPotions">0</div>
+            </div>
+        </div>
+
+        <div class="upgrade-section">
+            <div style="color: #FFD700; font-size: 1.1em; margin-bottom: 10px;">🧪 Upgrade Drop Rates 🧪</div>
+            <div class="upgrade-grid">
+                <button class="upgrade-button" onclick="upgrade('rare')">
+                    <div>Rare Boost</div>
+                    <div>Cost: <span id="rareCost">5</span> 🧪</div>
+                    <div style="font-size: 0.8em;">Lvl <span id="rareLevel">0</span>/10</div>
+                </button>
+                <button class="upgrade-button" onclick="upgrade('epic')">
+                    <div>Epic Boost</div>
+                    <div>Cost: <span id="epicCost">10</span> 🧪</div>
+                    <div style="font-size: 0.8em;">Lvl <span id="epicLevel">0</span>/10</div>
+                </button>
+                <button class="upgrade-button" onclick="upgrade('legendary')">
+                    <div>Legendary Boost</div>
+                    <div>Cost: <span id="legendaryCost">25</span> 🧪</div>
+                    <div style="font-size: 0.8em;">Lvl <span id="legendaryLevel">0</span>/8</div>
+                </button>
+                <button class="upgrade-button" onclick="upgrade('mythic')">
+                    <div>Mythic Boost</div>
+                    <div>Cost: <span id="mythicCost">50</span> 🧪</div>
+                    <div style="font-size: 0.8em;">Lvl <span id="mythicLevel">0</span>/5</div>
+                </button>
+            </div>
+        </div>
+
+        <div class="collection-grid">
+            <div class="collection-item common">
+                <div>COMMON</div>
+                <div class="collection-count" id="commonCount">0</div>
+            </div>
+            <div class="collection-item uncommon">
+                <div>UNCOMMON</div>
+                <div class="collection-count" id="uncommonCount">0</div>
+            </div>
+            <div class="collection-item rare">
+                <div>RARE</div>
+                <div class="collection-count" id="rareCount">0</div>
+            </div>
+            <div class="collection-item epic">
+                <div>EPIC</div>
+                <div class="collection-count" id="epicCount">0</div>
+            </div>
+            <div class="collection-item legendary">
+                <div>LEGENDARY</div>
+                <div class="collection-count" id="legendaryCount">0</div>
+            </div>
+            <div class="collection-item mythic">
+                <div>MYTHIC</div>
+                <div class="collection-count" id="mythicCount">0</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popup -->
+    <div class="popup-overlay" id="popupOverlay">
+        <div class="popup-content">
+            <div style="font-size: 1.5em; margin-bottom: 10px;" id="popupTitle">MAMMA MIA!</div>
+            <div class="character-image" id="popupImage"></div>
+            <div style="font-size: 2em; font-weight: bold; margin: 10px 0;" id="popupRarity">EPIC</div>
+            <div style="font-size: 1.3em; margin: 10px 0;" id="popupCharacter">Character Name</div>
+            <div id="popupMessage" style="margin: 15px 0;">Incredibile!</div>
+            <button class="popup-close" onclick="closePopup()">MOLTO BENE!</button>
+        </div>
+    </div>
+
+    <script>
+        /* 
+        HOW TO ADD YOUR IMAGES:
+        1. Upload your images to an image hosting service (Imgur, GitHub, etc.)
+        2. Get the direct image URLs (must end in .jpg, .png, etc.)
+        3. Replace the IMAGE_URL_X placeholders below with your actual URLs:
+           
+           IMAGE_URL_1  = Tung Tung Tung Sahur (wooden bat creature)
+           IMAGE_URL_2  = Ballerina Cappuccina (coffee ballerina)
+           IMAGE_URL_3  = Bombardino Crocodilo (crocodile plane)
+           IMAGE_URL_4  = Bombombini Gusini (goose bomber)
+           IMAGE_URL_5  = Rana Pneumatico (frog tire)
+           IMAGE_URL_6  = Proboscide Monkey (tree monkey)
+           IMAGE_URL_7  = Cappuccino Assassino (coffee ninja)
+           IMAGE_URL_8  = Banano Scimmia (banana monkey)
+           IMAGE_URL_9  = Lirili Larila (cactus elephant)
+           IMAGE_URL_10 = Tralalero Tralala (shark with Nikes)
+           IMAGE_URL_11 = Pescaratore Zanzaro (fish mosquito)
+           
+        Example: Replace "IMAGE_URL_1" with "https://i.imgur.com/your-image.jpg"
+        */
+        
+        let totalRolls = 0;
+        let luckPotions = 0;
+        let wheelEnabled = true;
+        let isRolling = false;
+        
+        // Collection tracking
+        let collection = {
+            common: 0,
+            uncommon: 0,
+            rare: 0,
+            epic: 0,
+            legendary: 0,
+            mythic: 0
+        };
+
+        // Upgrade levels
+        let upgradeLevels = {
+            rare: 0,
+            epic: 0,
+            legendary: 0,
+            mythic: 0
+        };
+
+        // Italian Brainrot Characters with local images - names from characters.txt
+        const characters = {
+            common: [
+                { 
+                    name: "Signora Garamararamararaman dan U Din Din Dun", 
+                    image: "italian_brainrot_images_namu/Signora Gar.webp",
+                    description: "The mysterious lady with the longest name",
+                    emoji: "👩‍💼"
+                },
+                { 
+                    name: "Trippi Troppi", 
+                    image: "italian_brainrot_images_namu/Tripy Torof.webp",
+                    description: "Always tripping and always tropical",
+                    emoji: "🌴"
+                }
+            ],
+            uncommon: [
+                { 
+                    name: "La Vaca Saturno Saturnita", 
+                    image: "italian_brainrot_images_namu/Rabaka Satu.webp",
+                    description: "The cosmic cow from Saturn",
+                    emoji: "🐄🪐"
+                },
+                { 
+                    name: "Chimpanzini Bananini", 
+                    image: "italian_brainrot_images_namu/Chimpanzini.webp",
+                    description: "Monkey with banana obsession",
+                    emoji: "🐵🍌"
+                }
+            ],
+            rare: [
+                { 
+                    name: "Brr Brr Patapim", 
+                    image: "italian_brainrot_images_namu/Brarr Patta.webp",
+                    description: "Cold creature that goes patapim",
+                    emoji: "🥶💥"
+                },
+                { 
+                    name: "Bombombini Gusini", 
+                    image: "italian_brainrot_images_namu/Bombombini.webp",
+                    description: "The explosive goose bomber",
+                    emoji: "🦆💣"
+                }
+            ],
+            epic: [
+                { 
+                    name: "Lirilì Larilà", 
+                    image: "italian_brainrot_images_namu/Lirilì Lari.webp",
+                    description: "The singing desert wanderer",
+                    emoji: "🎵🌵"
+                },
+                { 
+                    name: "Cappuccino Assassino", 
+                    image: "italian_brainrot_images_namu/Kappukapu K.webp",
+                    description: "The legendary coffee ninja assassin",
+                    emoji: "☕🥷"
+                }
+            ],
+            legendary: [
+                { 
+                    name: "Tralalero Tralala", 
+                    image: "italian_brainrot_images_namu/Tralala Tra.webp",
+                    description: "The original brainrot legend",
+                    emoji: "🎭✨"
+                },
+                { 
+                    name: "Ballerina Cappuccina", 
+                    image: "italian_brainrot_images_namu/Ballerina C.webp",
+                    description: "Elegant coffee ballerina, wife of Assassino",
+                    emoji: "☕🩰"
+                }
+            ],
+            mythic: [
+                { 
+                    name: "Tung Tung Tung Tung Tung Tung Tung Tung Tung Sahur", 
+                    image: "italian_brainrot_images_namu/Tung Tung H.webp",
+                    description: "Indonesian horror legend - appears if ignored 3 times",
+                    emoji: "🏏👹"
+                },
+                { 
+                    name: "Bombardiro Crocodilo", 
+                    image: "italian_brainrot_images_namu/Bom Bardiro.webp",
+                    description: "The ultimate fusion - crocodile military bomber",
+                    emoji: "🐊✈️"
+                }
+            ]
+        };
+
+        const upgradeConfig = {
+            rare: { baseCost: 5, maxLevel: 10, multiplier: 1.5 },
+            epic: { baseCost: 10, maxLevel: 10, multiplier: 1.5 },
+            legendary: { baseCost: 25, maxLevel: 8, multiplier: 1.8 },
+            mythic: { baseCost: 50, maxLevel: 5, multiplier: 2 }
+        };
+
+        const baseRates = {
+            common: 0.75,
+            uncommon: 0.20,
+            rare: 0.04,
+            epic: 0.008,
+            legendary: 0.0015,
+            mythic: 0.0005
+        };
+
+        // Initialize wheel
+        function initWheel() {
+            const wheel = document.getElementById('wheel');
+            const segments = 6;
+            const colors = ['#95a5a6', '#27ae60', '#3498db', '#9b59b6', '#f39c12', '#e74c3c'];
+            
+            wheel.innerHTML = '';
+            for (let i = 0; i < segments; i++) {
+                const segment = document.createElement('div');
+                segment.className = 'wheel-segment';
+                segment.style.background = colors[i];
+                segment.style.transform = `rotate(${i * 60}deg)`;
+                segment.style.clipPath = 'polygon(0 0, 50% 50%, 0 100%)';
+                wheel.appendChild(segment);
+            }
+        }
+
+        // Toggle wheel animation
+        document.getElementById('wheelToggle').addEventListener('click', function() {
+            wheelEnabled = !wheelEnabled;
+            this.classList.toggle('active');
+            document.getElementById('wheelContainer').style.display = wheelEnabled ? 'block' : 'none';
+        });
+
+        function calculateChances() {
+            let chances = {...baseRates};
+            
+            // Apply upgrades
+            chances.rare += upgradeLevels.rare * 0.015;
+            chances.epic += upgradeLevels.epic * 0.004;
+            chances.legendary += upgradeLevels.legendary * 0.002;
+            chances.mythic += upgradeLevels.mythic * 0.001;
+            
+            // Adjust common/uncommon
+            const totalRare = chances.rare + chances.epic + chances.legendary + chances.mythic;
+            const remaining = 1 - totalRare;
+            const uncommonRatio = chances.uncommon / (chances.common + chances.uncommon);
+            chances.uncommon = remaining * uncommonRatio;
+            chances.common = remaining * (1 - uncommonRatio);
+            
+            return chances;
+        }
+
+        function getUpgradeCost(type) {
+            const config = upgradeConfig[type];
+            const level = upgradeLevels[type];
+            return Math.floor(config.baseCost * Math.pow(config.multiplier, level));
+        }
+
+        function updateUpgradeButtons() {
+            for (let type in upgradeConfig) {
+                const cost = getUpgradeCost(type);
+                const level = upgradeLevels[type];
+                const maxLevel = upgradeConfig[type].maxLevel;
+                
+                document.getElementById(type + 'Cost').textContent = cost;
+                document.getElementById(type + 'Level').textContent = level;
+                
+                const button = document.querySelector(`button[onclick="upgrade('${type}')"]`);
+                button.disabled = luckPotions < cost || level >= maxLevel;
+                
+                if (level >= maxLevel) {
+                    button.innerHTML = `<div>${type.charAt(0).toUpperCase() + type.slice(1)} Boost</div><div>MAXED! 🔥</div>`;
+                }
+            }
+        }
+
+        function upgrade(type) {
+            const cost = getUpgradeCost(type);
+            const maxLevel = upgradeConfig[type].maxLevel;
+            
+            if (luckPotions >= cost && upgradeLevels[type] < maxLevel) {
+                luckPotions -= cost;
+                upgradeLevels[type]++;
+                document.getElementById('luckPotions').textContent = luckPotions;
+                updateUpgradeButtons();
+            }
+        }
+
+        function roll() {
+            if (isRolling) return;
+            
+            isRolling = true;
+            document.getElementById('rollButton').disabled = true;
+            
+            totalRolls++;
+            luckPotions++;
+            
+            const chances = calculateChances();
+            const random = Math.random();
+            
+            let cumulative = 0;
+            let result = null;
+            
+            const order = ['mythic', 'legendary', 'epic', 'rare', 'uncommon', 'common'];
+            for (let rarity of order) {
+                cumulative += chances[rarity];
+                if (random <= cumulative) {
+                    result = rarity;
+                    break;
+                }
+            }
+            
+            // Get random character from rarity
+            const charList = characters[result];
+            const character = charList[Math.floor(Math.random() * charList.length)];
+            
+            // Update collection
+            collection[result]++;
+            document.getElementById(result + 'Count').textContent = collection[result];
+            
+            if (wheelEnabled) {
+                // Spin wheel animation
+                const wheel = document.getElementById('wheel');
+                const spins = 5 + Math.random() * 5;
+                const finalAngle = Math.random() * 360;
+                wheel.style.transform = `rotate(${spins * 360 + finalAngle}deg)`;
+                
+                setTimeout(() => {
+                    showResult(result, character);
+                    isRolling = false;
+                    document.getElementById('rollButton').disabled = false;
+                }, 3000);
+            } else {
+                showResult(result, character);
+                isRolling = false;
+                document.getElementById('rollButton').disabled = false;
+            }
+            
+            // Update stats
+            document.getElementById('totalRolls').textContent = totalRolls;
+            document.getElementById('luckPotions').textContent = luckPotions;
+            updateUpgradeButtons();
+        }
+
+        function showResult(rarity, character) {
+            const resultDisplay = document.getElementById('resultDisplay');
+            const rarityLabel = document.getElementById('rarityLabel');
+            const characterName = document.getElementById('characterName');
+            const characterImage = document.getElementById('characterImage');
+            
+            resultDisplay.className = 'result-display active ' + rarity;
+            rarityLabel.textContent = rarity.toUpperCase();
+            characterName.textContent = character.name;
+            
+            // Display the image or fallback to emoji
+            if (character.image && !character.image.includes('IMAGE_URL')) {
+                characterImage.style.backgroundImage = `url('${character.image}')`;
+                characterImage.innerHTML = ''; // Clear emoji if any
+            } else {
+                // Use emoji as fallback
+                characterImage.style.backgroundImage = '';
+                characterImage.innerHTML = character.emoji || '❓';
+            }
+            
+            // Show popup for epic, legendary, mythic
+            if (rarity === 'epic' || rarity === 'legendary' || rarity === 'mythic') {
+                showPopup(rarity, character);
+            }
+        }
+
+        function showPopup(rarity, character) {
+            const overlay = document.getElementById('popupOverlay');
+            const popupRarity = document.getElementById('popupRarity');
+            const popupCharacter = document.getElementById('popupCharacter');
+            const popupMessage = document.getElementById('popupMessage');
+            const popupTitle = document.getElementById('popupTitle');
+            const popupImage = document.getElementById('popupImage');
+            
+            const messages = {
+                epic: {
+                    title: "MAMMA MIA! 🤌",
+                    message: character.description || "Che bello! You found an EPIC creature!"
+                },
+                legendary: {
+                    title: "🔥 INCREDIBILE! 🔥",
+                    message: character.description || "LEGENDARY! This is absolutely PAZZO! Solo in Ohio!"
+                },
+                mythic: {
+                    title: "⚡ MOLTO BENE!!! ⚡",
+                    message: character.description || "MYTHIC!!! IMPOSSIBILE! You are the SIGMA of Italian Brainrot!"
+                }
+            };
+            
+            popupTitle.innerHTML = messages[rarity].title;
+            popupRarity.textContent = rarity.toUpperCase();
+            popupRarity.className = rarity;
+            popupCharacter.textContent = character.name;
+            popupMessage.textContent = messages[rarity].message;
+            
+            // Display the image or fallback to emoji in popup
+            if (character.image && !character.image.includes('IMAGE_URL')) {
+                popupImage.style.backgroundImage = `url('${character.image}')`;
+                popupImage.innerHTML = ''; // Clear emoji if any
+                popupImage.style.fontSize = ''; // Reset font size
+                popupImage.style.display = 'flex';
+                popupImage.style.alignItems = 'center';
+                popupImage.style.justifyContent = 'center';
+            } else {
+                // Use emoji as fallback
+                popupImage.style.backgroundImage = '';
+                popupImage.innerHTML = character.emoji || '❓';
+                popupImage.style.fontSize = '100px';
+                popupImage.style.display = 'flex';
+                popupImage.style.alignItems = 'center';
+                popupImage.style.justifyContent = 'center';
+            }
+            
+            overlay.classList.add('active');
+        }
+
+        function closePopup() {
+            document.getElementById('popupOverlay').classList.remove('active');
+        }
+
+        // Initialize
+        initWheel();
+        updateUpgradeButtons();
+    </script>
+</body>
+</html>
