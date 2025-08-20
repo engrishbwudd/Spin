@@ -304,6 +304,68 @@
             cursor: not-allowed;
         }
 
+        /* === QoL Additions === */
+        .rate-line {
+            margin-top: 6px;
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+
+        .quick-row {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .pity-wrap {
+            margin: 12px 0 0 0;
+        }
+
+        .pity-bar {
+            display: grid;
+            grid-template-columns: 90px 1fr 60px;
+            align-items: center;
+            gap: 10px;
+            margin: 6px 0;
+            font-size: 0.9em;
+        }
+        .pity-bar .label { opacity: 0.85; }
+        .pity-bar .track {
+            height: 10px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .pity-bar .fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4ECDC4, #FFD700);
+            transition: width 0.25s ease;
+        }
+
+        .starline {
+            font-size: 0.95em;
+            opacity: 0.95;
+            margin-top: 4px;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-size: 0.95em;
+            z-index: 1100;
+            display: none;
+        }
+        .toast.show { display: block; animation: fadeIn 0.2s ease; }
+
+        .stat-box.gold { border: 1px solid rgba(255,215,0,0.35); }
+
         /* Popup */
         .popup-overlay {
             position: fixed;
@@ -398,6 +460,30 @@
         
         <button class="roll-button" onclick="roll()" id="rollButton">🎲 MOLTO BENE ROLL 🎲</button>
         
+        <div class="quick-row">
+            <button class="roll-button" id="roll10Button">⚡ QUICK ROLL ×10</button>
+        </div>
+
+        <div class="rate-line" id="rateLine">Rates: …</div>
+
+        <div class="pity-wrap">
+            <div class="pity-bar">
+                <div class="label">EPIC pity</div>
+                <div class="track"><div class="fill" id="epicPityFill"></div></div>
+                <div class="count" id="epicPityText">0/25</div>
+            </div>
+            <div class="pity-bar">
+                <div class="label">LEG pity</div>
+                <div class="track"><div class="fill" id="legPityFill"></div></div>
+                <div class="count" id="legPityText">0/100</div>
+            </div>
+            <div class="pity-bar">
+                <div class="label">MYTH pity</div>
+                <div class="track"><div class="fill" id="mythPityFill"></div></div>
+                <div class="count" id="mythPityText">0/350</div>
+            </div>
+        </div>
+        
         <div class="stats">
             <div class="stat-box">
                 <div>Total Rolls</div>
@@ -406,6 +492,10 @@
             <div class="stat-box">
                 <div>Luck Potions</div>
                 <div style="font-size: 1.5em; font-weight: bold; color: #FFD700;" id="luckPotions">0</div>
+            </div>
+            <div class="stat-box gold">
+                <div>Unique Found</div>
+                <div style="font-size:1.5em;font-weight:bold;" id="uniqueCount">0</div>
             </div>
         </div>
 
@@ -501,6 +591,16 @@
         let luckPotions = 0;
         let wheelEnabled = true;
         let isRolling = false;
+        
+        // === Progress & persistence ===
+        let characterCounts = {}; // { [name]: pulls }
+        let pity = { epic: 0, legendary: 0, mythic: 0 };
+        const pityThresholds = { epic: 25, legendary: 100, mythic: 350 };
+
+        // Dupe refunds keep dupes meaningful
+        const dupePotionRefund = { common: 1, uncommon: 2, rare: 5, epic: 12, legendary: 30, mythic: 80 };
+        // Optional bonus for first-time pulls (feels great)
+        const firstTimeBonus = 3;
         
         // Collection tracking
         let collection = {
@@ -689,6 +789,8 @@
                     button.innerHTML = `<div>${type.charAt(0).toUpperCase() + type.slice(1)} Boost</div><div>MAXED! 🔥</div>`;
                 }
             }
+            updateRateLine();
+            saveState();
         }
 
         function upgrade(type) {
@@ -703,45 +805,168 @@
             }
         }
 
+        // Save/Load
+        function saveState() {
+            const payload = {
+                totalRolls, luckPotions, wheelEnabled,
+                collection, upgradeLevels, characterCounts, pity
+            };
+            localStorage.setItem('ibr_state', JSON.stringify(payload));
+        }
+        function loadState() {
+            const raw = localStorage.getItem('ibr_state');
+            if (!raw) return;
+            try {
+                const s = JSON.parse(raw);
+                totalRolls = s.totalRolls ?? totalRolls;
+                luckPotions = s.luckPotions ?? luckPotions;
+                wheelEnabled = s.wheelEnabled ?? wheelEnabled;
+                collection = s.collection ?? collection;
+                upgradeLevels = s.upgradeLevels ?? upgradeLevels;
+                characterCounts = s.characterCounts ?? characterCounts;
+                pity = s.pity ?? pity;
+
+                // UI sync
+                document.getElementById('totalRolls').textContent = totalRolls;
+                document.getElementById('luckPotions').textContent = luckPotions;
+                for (const k of Object.keys(collection)) {
+                    const el = document.getElementById(k + 'Count');
+                    if (el) el.textContent = collection[k];
+                }
+                updateUpgradeButtons();
+                updateRateLine();
+                updatePityUI();
+                updateUniqueCount();
+            } catch(e) {
+                console.warn('Load failed', e);
+            }
+        }
+
+        function formatPct(x) {
+            return (x * 100).toFixed(x < 0.01 ? 3 : 2) + '%';
+        }
+
+        function updateRateLine() {
+            const ch = calculateChances();
+            const line = `Rates: C ${formatPct(ch.common)} / U ${formatPct(ch.uncommon)} / R ${formatPct(ch.rare)} / E ${formatPct(ch.epic)} / L ${formatPct(ch.legendary)} / M ${formatPct(ch.mythic)}`;
+            document.getElementById('rateLine').textContent = line;
+        }
+
+        function updatePityUI() {
+            const ePct = Math.min(100, (pity.epic / pityThresholds.epic) * 100);
+            const lPct = Math.min(100, (pity.legendary / pityThresholds.legendary) * 100);
+            const mPct = Math.min(100, (pity.mythic / pityThresholds.mythic) * 100);
+            document.getElementById('epicPityFill').style.width = ePct + '%';
+            document.getElementById('legPityFill').style.width = lPct + '%';
+            document.getElementById('mythPityFill').style.width = mPct + '%';
+            document.getElementById('epicPityText').textContent = `${pity.epic}/${pityThresholds.epic}`;
+            document.getElementById('legPityText').textContent = `${pity.legendary}/${pityThresholds.legendary}`;
+            document.getElementById('mythPityText').textContent = `${pity.mythic}/${pityThresholds.mythic}`;
+        }
+
+        function updateUniqueCount() {
+            const count = Object.keys(characterCounts).length;
+            const el = document.getElementById('uniqueCount');
+            if (el) el.textContent = count;
+        }
+
+        function toast(msg, ms=1600) {
+            let t = document.getElementById('toaster');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'toaster';
+                t.className = 'toast';
+                document.body.appendChild(t);
+            }
+            t.textContent = msg;
+            t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), ms);
+        }
+
         function roll() {
             if (isRolling) return;
-            
             isRolling = true;
             document.getElementById('rollButton').disabled = true;
-            
+
             totalRolls++;
-            luckPotions++;
-            
+            luckPotions++; // baseline drip
+            // Pity meters tick before outcome
+            pity.epic++;
+            pity.legendary++;
+            pity.mythic++;
+
             const chances = calculateChances();
-            const random = Math.random();
-            
-            let cumulative = 0;
+
+            // Decide rarity with pity guarantees
             let result = null;
-            
-            const order = ['mythic', 'legendary', 'epic', 'rare', 'uncommon', 'common'];
-            for (let rarity of order) {
-                cumulative += chances[rarity];
-                if (random <= cumulative) {
-                    result = rarity;
-                    break;
+            if (pity.mythic >= pityThresholds.mythic) {
+                result = 'mythic';
+            } else if (pity.legendary >= pityThresholds.legendary) {
+                result = 'legendary';
+            } else if (pity.epic >= pityThresholds.epic) {
+                result = 'epic';
+            } else {
+                // normal RNG
+                const random = Math.random();
+                let cumulative = 0;
+                const order = ['mythic', 'legendary', 'epic', 'rare', 'uncommon', 'common'];
+                for (let rarity of order) {
+                    cumulative += chances[rarity];
+                    if (random <= cumulative) {
+                        result = rarity;
+                        break;
+                    }
                 }
             }
-            
-            // Get random character from rarity
+
+            // Pick a character
             const charList = characters[result];
             const character = charList[Math.floor(Math.random() * charList.length)];
-            
-            // Update collection
+
+            // Collection and dupes
+            const alreadyHad = !!characterCounts[character.name];
+            characterCounts[character.name] = (characterCounts[character.name] || 0) + 1;
+
+            // Rarity counts (keeps your grid behavior as "total pulled")
             collection[result]++;
             document.getElementById(result + 'Count').textContent = collection[result];
-            
+
+            // Refund potions on dupes, bonus on first-time
+            if (alreadyHad) {
+                const refund = dupePotionRefund[result] || 0;
+                if (refund > 0) {
+                    luckPotions += refund;
+                    // we'll show it in popup message
+                    character._dupeRefund = refund;
+                }
+            } else {
+                luckPotions += firstTimeBonus;
+                character._firstTimeBonus = firstTimeBonus;
+            }
+
+            // Reset pity appropriately
+            if (result === 'epic') {
+                pity.epic = 0;
+            } else if (result === 'legendary') {
+                pity.epic = 0; pity.legendary = 0;
+            } else if (result === 'mythic') {
+                pity.epic = 0; pity.legendary = 0; pity.mythic = 0;
+            }
+            updatePityUI();
+
+            // Update stats/potions
+            document.getElementById('totalRolls').textContent = totalRolls;
+            document.getElementById('luckPotions').textContent = luckPotions;
+            updateUniqueCount();
+            updateUpgradeButtons(); // also updates rates
+            saveState();
+
+            // Animate or not
             if (wheelEnabled) {
-                // Spin wheel animation
                 const wheel = document.getElementById('wheel');
                 const spins = 5 + Math.random() * 5;
                 const finalAngle = Math.random() * 360;
                 wheel.style.transform = `rotate(${spins * 360 + finalAngle}deg)`;
-                
                 setTimeout(() => {
                     showResult(result, character);
                     isRolling = false;
@@ -752,87 +977,153 @@
                 isRolling = false;
                 document.getElementById('rollButton').disabled = false;
             }
-            
-            // Update stats
-            document.getElementById('totalRolls').textContent = totalRolls;
-            document.getElementById('luckPotions').textContent = luckPotions;
-            updateUpgradeButtons();
         }
 
-        function showResult(rarity, character) {
+        function showResult(rarity, character, opts = {}) {
+            const suppressPopups = opts.suppressPopups === true;
+
             const resultDisplay = document.getElementById('resultDisplay');
             const rarityLabel = document.getElementById('rarityLabel');
             const characterName = document.getElementById('characterName');
             const characterImage = document.getElementById('characterImage');
-            
+
             resultDisplay.className = 'result-display active ' + rarity;
             rarityLabel.textContent = rarity.toUpperCase();
-            characterName.textContent = character.name;
-            
-            // Display the image or fallback to emoji
+
+            const pulls = characterCounts[character.name] || 1;
+            const stars = Math.max(0, pulls - 1); // first copy = 0 stars
+            const starText = stars > 0 ? `  ${'★'.repeat(Math.min(stars,5))}${stars > 5 ? ' +' + (stars-5) : ''}` : '';
+            characterName.textContent = character.name + starText;
+
             if (character.image && !character.image.includes('IMAGE_URL')) {
                 characterImage.style.backgroundImage = `url('${character.image}')`;
-                characterImage.innerHTML = ''; // Clear emoji if any
+                characterImage.innerHTML = '';
             } else {
-                // Use emoji as fallback
                 characterImage.style.backgroundImage = '';
                 characterImage.innerHTML = character.emoji || '❓';
             }
-            
-            // Show popup for epic, legendary, mythic
-            if (rarity === 'epic' || rarity === 'legendary' || rarity === 'mythic') {
-                showPopup(rarity, character);
+
+            if (!suppressPopups && (rarity === 'epic' || rarity === 'legendary' || rarity === 'mythic')) {
+                // enrich popup messaging
+                const overlay = document.getElementById('popupOverlay');
+                const popupRarity = document.getElementById('popupRarity');
+                const popupCharacter = document.getElementById('popupCharacter');
+                const popupMessage = document.getElementById('popupMessage');
+                const popupTitle = document.getElementById('popupTitle');
+                const popupImage = document.getElementById('popupImage');
+
+                const messages = {
+                    epic:  { title: "MAMMA MIA! 🤌", msg: character.description || "Che bello! You found an EPIC creature!" },
+                    legendary: { title: "🔥 INCREDIBILE! 🔥", msg: character.description || "LEGENDARY! Absolutely pazzo!" },
+                    mythic: { title: "⚡ MOLTO BENE!!! ⚡", msg: character.description || "MYTHIC!!! IMPOSSIBILE!" }
+                };
+
+                popupTitle.innerHTML = messages[rarity].title;
+                popupRarity.textContent = rarity.toUpperCase();
+                popupRarity.className = rarity;
+                popupCharacter.textContent = character.name + starText;
+
+                let note = messages[rarity].msg;
+                if (character._dupeRefund) note += `  • Duplicate refund: +${character._dupeRefund} 🧪`;
+                if (character._firstTimeBonus) note += `  • New find bonus: +${character._firstTimeBonus} 🧪`;
+                popupMessage.textContent = note;
+
+                if (character.image && !character.image.includes('IMAGE_URL')) {
+                    popupImage.style.backgroundImage = `url('${character.image}')`;
+                    popupImage.innerHTML = '';
+                } else {
+                    popupImage.style.backgroundImage = '';
+                    popupImage.innerHTML = character.emoji || '❓';
+                    popupImage.style.fontSize = '100px';
+                    popupImage.style.display = 'flex';
+                    popupImage.style.alignItems = 'center';
+                    popupImage.style.justifyContent = 'center';
+                }
+
+                overlay.classList.add('active');
             }
         }
 
-        function showPopup(rarity, character) {
-            const overlay = document.getElementById('popupOverlay');
-            const popupRarity = document.getElementById('popupRarity');
-            const popupCharacter = document.getElementById('popupCharacter');
-            const popupMessage = document.getElementById('popupMessage');
-            const popupTitle = document.getElementById('popupTitle');
-            const popupImage = document.getElementById('popupImage');
-            
-            const messages = {
-                epic: {
-                    title: "MAMMA MIA! 🤌",
-                    message: character.description || "Che bello! You found an EPIC creature!"
-                },
-                legendary: {
-                    title: "🔥 INCREDIBILE! 🔥",
-                    message: character.description || "LEGENDARY! This is absolutely PAZZO! Solo in Ohio!"
-                },
-                mythic: {
-                    title: "⚡ MOLTO BENE!!! ⚡",
-                    message: character.description || "MYTHIC!!! IMPOSSIBILE! You are the SIGMA of Italian Brainrot!"
-                }
-            };
-            
-            popupTitle.innerHTML = messages[rarity].title;
-            popupRarity.textContent = rarity.toUpperCase();
-            popupRarity.className = rarity;
-            popupCharacter.textContent = character.name;
-            popupMessage.textContent = messages[rarity].message;
-            
-            // Display the image or fallback to emoji in popup
-            if (character.image && !character.image.includes('IMAGE_URL')) {
-                popupImage.style.backgroundImage = `url('${character.image}')`;
-                popupImage.innerHTML = ''; // Clear emoji if any
-                popupImage.style.fontSize = ''; // Reset font size
-                popupImage.style.display = 'flex';
-                popupImage.style.alignItems = 'center';
-                popupImage.style.justifyContent = 'center';
+        document.getElementById('roll10Button').addEventListener('click', rollBatch10);
+
+        function rollOnceCore(skipAnimation=true, suppressPopups=true) {
+            // this calls your roll path but without UI delays
+            // increment totals and pity just like in roll()
+            totalRolls++;
+            luckPotions++;
+            pity.epic++; pity.legendary++; pity.mythic++;
+
+            const chances = calculateChances();
+            let result = null;
+            if (pity.mythic >= pityThresholds.mythic) {
+                result = 'mythic';
+            } else if (pity.legendary >= pityThresholds.legendary) {
+                result = 'legendary';
+            } else if (pity.epic >= pityThresholds.epic) {
+                result = 'epic';
             } else {
-                // Use emoji as fallback
-                popupImage.style.backgroundImage = '';
-                popupImage.innerHTML = character.emoji || '❓';
-                popupImage.style.fontSize = '100px';
-                popupImage.style.display = 'flex';
-                popupImage.style.alignItems = 'center';
-                popupImage.style.justifyContent = 'center';
+                const random = Math.random();
+                let cumulative = 0;
+                const order = ['mythic', 'legendary', 'epic', 'rare', 'uncommon', 'common'];
+                for (let rarity of order) {
+                    cumulative += chances[rarity];
+                    if (random <= cumulative) { result = rarity; break; }
+                }
             }
-            
-            overlay.classList.add('active');
+
+            const charList = characters[result];
+            const character = charList[Math.floor(Math.random() * charList.length)];
+            const alreadyHad = !!characterCounts[character.name];
+            characterCounts[character.name] = (characterCounts[character.name] || 0) + 1;
+
+            collection[result]++;
+
+            if (alreadyHad) {
+                luckPotions += dupePotionRefund[result] || 0;
+            } else {
+                luckPotions += firstTimeBonus;
+            }
+
+            if (result === 'epic') {
+                pity.epic = 0;
+            } else if (result === 'legendary') {
+                pity.epic = 0; pity.legendary = 0;
+            } else if (result === 'mythic') {
+                pity.epic = 0; pity.legendary = 0; pity.mythic = 0;
+            }
+
+            return { rarity: result, character, alreadyHad };
+        }
+
+        function rollBatch10() {
+            if (isRolling) return;
+            const prevWheel = wheelEnabled;
+            wheelEnabled = false;
+
+            let tally = { common:0, uncommon:0, rare:0, epic:0, legendary:0, mythic:0, new:0, dupes:0 };
+            for (let i=0;i<10;i++) {
+                const r = rollOnceCore(true,true);
+                tally[r.rarity]++;
+                if (r.alreadyHad) tally.dupes++; else tally.new++;
+            }
+
+            // Update UI at once
+            document.getElementById('totalRolls').textContent = totalRolls;
+            document.getElementById('luckPotions').textContent = luckPotions;
+            for (const k of Object.keys(collection)) {
+                const el = document.getElementById(k + 'Count');
+                if (el) el.textContent = collection[k];
+            }
+            updatePityUI();
+            updateUpgradeButtons();
+            updateUniqueCount();
+            saveState();
+
+            // Show last roll's card briefly so it doesn't feel sterile
+            const lastChar = Object.keys(characterCounts).length ? null : null; // not used; keep simple
+            toast(`×10 Summary → C:${tally.common} U:${tally.uncommon} R:${tally.rare} E:${tally.epic} L:${tally.legendary} M:${tally.mythic}  • New:${tally.new} Dupes:${tally.dupes}`, 2200);
+
+            wheelEnabled = prevWheel;
         }
 
         function closePopup() {
@@ -841,7 +1132,11 @@
 
         // Initialize
         initWheel();
+        loadState();
         updateUpgradeButtons();
+        updateRateLine();
+        updatePityUI();
+        updateUniqueCount();
     </script>
 </body>
 </html>
